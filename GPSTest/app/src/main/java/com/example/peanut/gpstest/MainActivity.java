@@ -15,6 +15,7 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.method.ScrollingMovementMethod;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -110,6 +111,8 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 fileUtils.appendDataToFile(getApplicationContext(), String.valueOf(textView.getText()), "test.txt");
                 String test = fileUtils.loadDataFromFile(getApplicationContext(), "test.txt");
+                if(test.length()>10)
+                    test=test.substring(0,4)+test.substring(4).replace("当","\n\n当").replace("wifi","\nwifi").replace("WiFi","\nWiFi")+"\n";
                 textView2.setText(test);
             }
         });
@@ -125,6 +128,8 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 String test = fileUtils.loadDataFromFile(getApplicationContext(), "test.txt");
+                if(test.length()>10)
+                    test=test.substring(0,4)+test.substring(4).replace("当","\n\n当").replace("wifi","\nwifi").replace("WiFi","\nWiFi")+"\n";
                 textView2.setText(test);
             }
         });
@@ -145,13 +150,13 @@ public class MainActivity extends AppCompatActivity {
         if (location != null) {
             sb.append(" 位置信息：\n");
             sb.append("经度：" + location.getLongitude() + ", 纬度："
-                    + location.getLatitude()+"\n");
+                    + location.getLatitude()+"  \n");
             sb.append("wifi信息： \n");
             for(int i=0;i<wifiinfo.size();i++) {
                 //String WiFiID=wifiList.get(i).SSID;
                 String WiFiID = wifiinfo.get(i).BSSID;//get the AP's IP
                 double Level = wifiinfo.get(i).level;
-                String strcontent = "WiFi MAC: "+WiFiID + " ,强度： " + String.valueOf(Level) + "\n";
+                String strcontent = "WiFi MAC: "+WiFiID + " ,强度： " + String.valueOf(Level) + "  \n";
                 sb.append(strcontent);
             }
             textView.setText(sb.toString());
