@@ -1,14 +1,15 @@
 package com.example.peanut.baidumaprecord;
 
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.baidu.location.BDAbstractLocationListener;
 import com.baidu.location.BDLocation;
@@ -24,9 +25,18 @@ import com.baidu.mapapi.map.Overlay;
 import com.baidu.mapapi.map.OverlayOptions;
 import com.baidu.mapapi.map.PolylineOptions;
 import com.baidu.mapapi.model.LatLng;
+import com.google.gson.Gson;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -39,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
     private Button end = null;
     private Button delete = null;
     private Button draw = null;
+    private Button btn_upload = null;
 
     private LinearLayout linearLayout = null;
 
@@ -54,14 +65,41 @@ public class MainActivity extends AppCompatActivity {
 
     static int cnt = 0;
 
-    Handler handler=new Handler();
+    String data_id="";
+
+    Handler handler=new Handler(){
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            switch (msg.what){
+                case 1:
+                    int result=(int)msg.obj;
+                    System.out.println("upload:"+result);
+                    break;
+                case 2:
+                    List<LatLng> t_list = new ArrayList<LatLng>();
+                    try {
+                        String content = (String) msg.obj;
+                        Gson gs = new Gson();
+                        JSONArray ary = new JSONArray(content);
+                        for (int i=0;i<ary.length();i++) {
+                            String contentdata=ary.getString(i);
+                            System.out.println(contentdata);
+                            t_list.add(gs.fromJson(contentdata, LatLng.class));
+                        }
+                    }catch (Exception e){
+                        e.printStackTrace();
+                    }
+                    break;
+            }
+        }
+    };
     Runnable runnable=new Runnable() {
         @Override
         public void run() {
             if(fileUtils != null && colorBar != null){
                 colorBar.setText("Recording: "+String.valueOf(cnt++)+". "+CurrentPostion.toString()+"\n");
                 fileUtils.appendDataToFile(getApplicationContext(),CurrentPostion.toString()+"\n","GPS.txt");
-
                 points.add(CurrentPostion);
             }
             handler.postDelayed(this, 2000);
@@ -82,6 +120,7 @@ public class MainActivity extends AppCompatActivity {
         end = (Button) findViewById(R.id.end);
         read = (Button) findViewById(R.id.read);
         draw = (Button) findViewById(R.id.draw);
+        btn_upload=(Button) findViewById(R.id.upload);
 
         linearLayout = (LinearLayout)findViewById(R.id.ll);
 
@@ -123,7 +162,7 @@ public class MainActivity extends AppCompatActivity {
         delete.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                fileUtils.appendDataToFile(getApplicationContext(),"","GPS.txt");
+                fileUtils.saveDataToFile(getApplicationContext(),"","GPS.txt");
             }
         });
 
@@ -148,7 +187,36 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        btn_upload.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(points.size()!=0)
+                    for(int i=0;i < points.size();i++){
+                        upload(points.get(i));
+                    }
+                else colorBar.setText("No point");
+            }
+        });
 
+        read.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                download();
+            }
+        });
+
+        SharedPreferences sharedPreferences = getSharedPreferences("MY_PREFERENCE", Context.MODE_PRIVATE);
+        String uuid= sharedPreferences.getString("uuid", "");
+        int count=sharedPreferences.getInt("count", -1);
+        SharedPreferences.Editor editor = sharedPreferences.edit();//获取编辑器
+        if(uuid.equals("")){
+            uuid=UUID.randomUUID().toString();
+            editor.putString("uuid",uuid);
+        }
+        count+=1;
+        editor.putInt("count",count);
+        editor.commit();//提交修改
+        data_id=count+"-"+uuid;
     }
 
     public class MyLocationListener extends BDAbstractLocationListener {
@@ -189,4 +257,76 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         handler.removeCallbacks(runnable);
     }
+
+    void upload(LatLng cpos){
+        System.out.println("run");
+        final LatLng cpos1=cpos;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                Gson gs = new Gson();
+                String objectstr=gs.toJson(cpos1);
+                JSONObject jsonObject=new JSONObject() ;
+                int msg=-100;   //callback
+                try {
+                    jsonObject.put("timestamp",data_id );
+                    jsonObject.put("content",objectstr);
+                    URL url = new URL("http://203.195.152.23:8080/Tomcat_test/gps");
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(5000);
+                    conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+                    conn.setDoOutput(true);
+                    conn.getOutputStream().write(jsonObject.toString().getBytes());
+                    if (conn.getResponseCode() == 200){
+                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
+                        String line = null;
+                        StringBuilder sb = new StringBuilder();
+                        while ((line = br.readLine()) != null) {
+                            sb.append(line);
+                        }
+                        JSONObject obj=new JSONObject(sb.toString());
+                        msg=obj.getInt("msg");
+                        Message message = handler.obtainMessage(1, 1, 2, msg);
+                        handler.sendMessage(message);
+                    }
+                }catch (Exception e){
+                    e.printStackTrace();
+                }
+            }
+        }).start();
+    }
+    void download(){
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    URL url = new URL("http://203.195.152.23:8080/Tomcat_test/gps?timestamp="+data_id);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(5000);
+                    if(conn.getResponseCode()==200){
+                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
+                        String line = null;
+                        StringBuilder sb = new StringBuilder();
+                        while ((line = br.readLine()) != null) {
+                            sb.append(line);
+                        }
+                        JSONObject obj=new JSONObject(sb.toString());
+                        String msg=obj.getString("msg");
+                        if(msg.equals("ok!")){
+                            String content=obj.getString("result");
+                            System.out.println(content);
+                            Message message = handler.obtainMessage(2, 1, 2, content);
+                            handler.sendMessage(message);
+                        }
+                    }
+                }catch (Exception e){
+                    e.printStackTrace();
+                }
+            }
+        }).start();
+    }
+
+
 }
