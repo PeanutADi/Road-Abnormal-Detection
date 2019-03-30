@@ -25,6 +25,7 @@ import com.baidu.mapapi.map.Overlay;
 import com.baidu.mapapi.map.OverlayOptions;
 import com.baidu.mapapi.map.PolylineOptions;
 import com.baidu.mapapi.model.LatLng;
+import com.bigkoo.pickerview.TimePickerView;
 import com.google.gson.Gson;
 
 import org.json.JSONArray;
@@ -34,7 +35,10 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
@@ -43,6 +47,9 @@ public class MainActivity extends AppCompatActivity {
     private MapView mMapView = null;
     private TextView textView = null;
     private TextView colorBar = null;
+
+    private TextView tv_start=null;
+    private TextView tv_end=null;
 
     private Button read = null;
     private Button start = null;
@@ -65,7 +72,11 @@ public class MainActivity extends AppCompatActivity {
 
     static int cnt = 0;
 
-    String data_id="";
+    String uuid="";
+    TimePickerView pvTime1=null;
+    TimePickerView pvTime2=null;
+
+    SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
     Handler handler=new Handler(){
         @Override
@@ -84,9 +95,9 @@ public class MainActivity extends AppCompatActivity {
                         JSONArray ary = new JSONArray(content);
                         for (int i=0;i<ary.length();i++) {
                             String contentdata=ary.getString(i);
-                            System.out.println(contentdata);
                             t_list.add(gs.fromJson(contentdata, LatLng.class));
                         }
+                        points=t_list;
                     }catch (Exception e){
                         e.printStackTrace();
                     }
@@ -101,6 +112,9 @@ public class MainActivity extends AppCompatActivity {
                 colorBar.setText("Recording: "+String.valueOf(cnt++)+". "+CurrentPostion.toString()+"\n");
                 fileUtils.appendDataToFile(getApplicationContext(),CurrentPostion.toString()+"\n","GPS.txt");
                 points.add(CurrentPostion);
+                if((Math.abs(CurrentPostion.latitude-20)<10)&&(Math.abs(CurrentPostion.longitude-110)<20)) {
+                    upload(CurrentPostion);
+                }
             }
             handler.postDelayed(this, 2000);
         }
@@ -110,17 +124,21 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        Date nowtime=new Date();
         //获取地图控件引用
         mMapView = (MapView) findViewById(R.id.bmapView);
         textView = (TextView) findViewById(R.id.textView5);
         colorBar = (TextView) findViewById(R.id.colorBar);
+        tv_start = (TextView) findViewById(R.id.tv_start);
+        tv_end = (TextView) findViewById(R.id.tv_end);
+        tv_start.setText(df.format(nowtime));
+        tv_end.setText(df.format(nowtime));
 
         start = (Button) findViewById(R.id.start);
         delete = (Button) findViewById(R.id.delete);
         end = (Button) findViewById(R.id.end);
         read = (Button) findViewById(R.id.read);
         draw = (Button) findViewById(R.id.draw);
-        btn_upload=(Button) findViewById(R.id.upload);
 
         linearLayout = (LinearLayout)findViewById(R.id.ll);
 
@@ -187,17 +205,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        btn_upload.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if(points.size()!=0)
-                    for(int i=0;i < points.size();i++){
-                        upload(points.get(i));
-                    }
-                else colorBar.setText("No point");
-            }
-        });
-
         read.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -205,18 +212,44 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+
+        pvTime1 = new TimePickerView.Builder(this, new TimePickerView.OnTimeSelectListener() {
+            @Override
+            public void onTimeSelect(Date date,View v) {//选中事件回调
+                tv_start.setText(df.format(date));
+            }
+        }).build();
+        pvTime2 = new TimePickerView.Builder(this, new TimePickerView.OnTimeSelectListener() {
+            @Override
+            public void onTimeSelect(Date date,View v) {//选中事件回调
+                tv_end.setText(df.format(date));
+            }
+        }).build();
+
+        tv_start.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                pvTime1.setDate(Calendar.getInstance());//注：根据需求来决定是否使用该方法（一般是精确到秒的情况），此项可以在弹出选择器的时候重新设置当前时间，避免在初始化之后由于时间已经设定，导致选中时间与当前时间不匹配的问题。
+                pvTime1.show();
+            }
+        });
+        tv_end.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                pvTime2.setDate(Calendar.getInstance());//注：根据需求来决定是否使用该方法（一般是精确到秒的情况），此项可以在弹出选择器的时候重新设置当前时间，避免在初始化之后由于时间已经设定，导致选中时间与当前时间不匹配的问题。
+                pvTime2.show();
+            }
+        });
+
+
         SharedPreferences sharedPreferences = getSharedPreferences("MY_PREFERENCE", Context.MODE_PRIVATE);
-        String uuid= sharedPreferences.getString("uuid", "");
-        int count=sharedPreferences.getInt("count", -1);
+        uuid= sharedPreferences.getString("uuid", "");
         SharedPreferences.Editor editor = sharedPreferences.edit();//获取编辑器
         if(uuid.equals("")){
             uuid=UUID.randomUUID().toString();
             editor.putString("uuid",uuid);
         }
-        count+=1;
-        editor.putInt("count",count);
         editor.commit();//提交修改
-        data_id=count+"-"+uuid;
     }
 
     public class MyLocationListener extends BDAbstractLocationListener {
@@ -268,8 +301,12 @@ public class MainActivity extends AppCompatActivity {
                 String objectstr=gs.toJson(cpos1);
                 JSONObject jsonObject=new JSONObject() ;
                 int msg=-100;   //callback
+                Date nowtime=new Date();
+                SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                String timestamp=df.format(nowtime);
                 try {
-                    jsonObject.put("timestamp",data_id );
+                    jsonObject.put("uuid",uuid);
+                    jsonObject.put("timestamp",timestamp );
                     jsonObject.put("content",objectstr);
                     URL url = new URL("http://203.195.152.23:8080/Tomcat_test/gps");
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -301,7 +338,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    URL url = new URL("http://203.195.152.23:8080/Tomcat_test/gps?timestamp="+data_id);
+                    URL url = new URL("http://203.195.152.23:8080/Tomcat_test/gps?uuid="+uuid+"&from="+tv_start.getText().toString()+"&to="+tv_end.getText().toString());
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("GET");
                     conn.setConnectTimeout(5000);
@@ -316,7 +353,6 @@ public class MainActivity extends AppCompatActivity {
                         String msg=obj.getString("msg");
                         if(msg.equals("ok!")){
                             String content=obj.getString("result");
-                            System.out.println(content);
                             Message message = handler.obtainMessage(2, 1, 2, content);
                             handler.sendMessage(message);
                         }
