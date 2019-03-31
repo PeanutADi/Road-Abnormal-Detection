@@ -10,6 +10,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.baidu.location.BDAbstractLocationListener;
 import com.baidu.location.BDLocation;
@@ -73,8 +74,11 @@ public class MainActivity extends AppCompatActivity {
     static int cnt = 0;
 
     String uuid="";
+    int count=0;
     TimePickerView pvTime1=null;
     TimePickerView pvTime2=null;
+    //String porturl="http://192.168.199.230:8080";
+    String porturl="http://203.195.152.23:8080";
 
     SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
@@ -100,6 +104,15 @@ public class MainActivity extends AppCompatActivity {
                         points=t_list;
                     }catch (Exception e){
                         e.printStackTrace();
+                    }
+                    break;
+                case 3:
+                    int ans=(int)msg.obj;
+                    if(ans<0) {
+                        Toast.makeText(getApplicationContext(), "upload wrong!!!!", Toast.LENGTH_SHORT).show();
+                    }
+                    else{
+                        Toast.makeText(getApplicationContext(), "upload ok!!!!", Toast.LENGTH_SHORT).show();
                     }
                     break;
             }
@@ -139,6 +152,7 @@ public class MainActivity extends AppCompatActivity {
         end = (Button) findViewById(R.id.end);
         read = (Button) findViewById(R.id.read);
         draw = (Button) findViewById(R.id.draw);
+        btn_upload=(Button)findViewById(R.id.upload);
 
         linearLayout = (LinearLayout)findViewById(R.id.ll);
 
@@ -204,7 +218,12 @@ public class MainActivity extends AppCompatActivity {
                 Overlay mPolyline = mBaiduMap.addOverlay(mOverlayOptions);
             }
         });
-
+        btn_upload.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                uploadall();
+            }
+        });
         read.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -244,11 +263,14 @@ public class MainActivity extends AppCompatActivity {
 
         SharedPreferences sharedPreferences = getSharedPreferences("MY_PREFERENCE", Context.MODE_PRIVATE);
         uuid= sharedPreferences.getString("uuid", "");
+        count= sharedPreferences.getInt("count", 0);
         SharedPreferences.Editor editor = sharedPreferences.edit();//获取编辑器
         if(uuid.equals("")){
             uuid=UUID.randomUUID().toString();
             editor.putString("uuid",uuid);
         }
+        count+=1;
+        editor.putInt("count",count);
         editor.commit();//提交修改
     }
 
@@ -308,7 +330,8 @@ public class MainActivity extends AppCompatActivity {
                     jsonObject.put("uuid",uuid);
                     jsonObject.put("timestamp",timestamp );
                     jsonObject.put("content",objectstr);
-                    URL url = new URL("http://203.195.152.23:8080/Tomcat_test/gps");
+                    jsonObject.put("count",count);
+                    URL url = new URL(porturl+"/Tomcat_test/gps");
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("POST");
                     conn.setConnectTimeout(5000);
@@ -333,12 +356,53 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
+    void uploadall(){
+        System.out.println("run");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                Gson gs = new Gson();
+                String objectstr=gs.toJson(points);
+                JSONObject jsonObject=new JSONObject() ;
+                int msg=-100;   //callback
+                Date nowtime=new Date();
+                SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                String timestamp=df.format(nowtime);
+                try {
+                    jsonObject.put("uuid",uuid);
+                    jsonObject.put("timestamp",timestamp );
+                    jsonObject.put("content",objectstr);
+                    URL url = new URL(porturl+"/Tomcat_test/gpsall");
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setConnectTimeout(5000);
+                    conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+                    conn.setDoOutput(true);
+                    conn.getOutputStream().write(jsonObject.toString().getBytes());
+                    if (conn.getResponseCode() == 200){
+                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "utf-8"));
+                        String line = null;
+                        StringBuilder sb = new StringBuilder();
+                        while ((line = br.readLine()) != null) {
+                            sb.append(line);
+                        }
+                        JSONObject obj=new JSONObject(sb.toString());
+                        msg=obj.getInt("msg");
+                        Message message = handler.obtainMessage(3, 1, 2, msg);
+                        handler.sendMessage(message);
+                    }
+                }catch (Exception e){
+                    e.printStackTrace();
+                }
+            }
+        }).start();
+    }
     void download(){
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    URL url = new URL("http://203.195.152.23:8080/Tomcat_test/gps?uuid="+uuid+"&from="+tv_start.getText().toString()+"&to="+tv_end.getText().toString());
+                    URL url = new URL(porturl+"/Tomcat_test/gps?uuid="+uuid+"&from="+tv_start.getText().toString()+"&to="+tv_end.getText().toString());
                     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("GET");
                     conn.setConnectTimeout(5000);
