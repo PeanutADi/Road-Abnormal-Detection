@@ -47,6 +47,13 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Draw" />
+
+            <Button
+                android:id="@+id/upload"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Upload" />
         </LinearLayout>
         <LinearLayout
             android:layout_width="match_parent"
